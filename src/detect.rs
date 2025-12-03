@@ -51,7 +51,7 @@ pub fn detect(dir: &Path) -> Result<Detection> {
         if all_deps.contains_key("vite") || dev_script.contains("vite") {
             return Ok(Detection {
                 framework: "Vite".into(),
-                start_command: "npm run dev".into(),
+                start_command: "npm run dev --".into(),
                 port_strategy: PortStrategy::CliFlag("--port".into()),
             });
         }
