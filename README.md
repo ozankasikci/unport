@@ -5,6 +5,14 @@ Local development port manager. Access your apps via clean domains like `http://
 ## Installation
 
 ```bash
+cargo install unport-cli
+```
+
+Or build from source:
+
+```bash
+git clone https://github.com/ozankasikci/unport
+cd unport
 cargo install --path .
 ```
 
