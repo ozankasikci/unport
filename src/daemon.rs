@@ -352,10 +352,36 @@ async fn handle_proxy_request(
         }
         None => {
             // Show dashboard for localhost, 404 for unknown domains
-            let reg = registry.read().await;
-            let services = reg.list();
-
             if domain == "localhost" || domain == "127.0.0.1" {
+                let path = req.uri().path();
+
+                // Handle kill API endpoint
+                if path.starts_with("/api/kill/") {
+                    let target_domain = path.strip_prefix("/api/kill/").unwrap_or("");
+                    if !target_domain.is_empty() {
+                        let mut reg = registry.write().await;
+                        if let Some(service) = reg.unregister(target_domain) {
+                            unsafe {
+                                libc::kill(service.pid as i32, libc::SIGTERM);
+                            }
+                            info!("Killed service: {}", target_domain);
+                            return Ok(Response::builder()
+                                .status(200)
+                                .header("content-type", "application/json")
+                                .body(Full::new(Bytes::from(r#"{"ok":true}"#)))
+                                .unwrap());
+                        } else {
+                            return Ok(Response::builder()
+                                .status(404)
+                                .header("content-type", "application/json")
+                                .body(Full::new(Bytes::from(r#"{"error":"not found"}"#)))
+                                .unwrap());
+                        }
+                    }
+                }
+
+                let reg = registry.read().await;
+                let services = reg.list();
                 let html = render_dashboard(&services);
                 Ok(Response::builder()
                     .status(200)
@@ -363,6 +389,8 @@ async fn handle_proxy_request(
                     .body(Full::new(Bytes::from(html)))
                     .unwrap())
             } else {
+                let reg = registry.read().await;
+                let services = reg.list();
                 let available = services
                     .iter()
                     .map(|s| format!("  - http://{}", s.domain))
@@ -430,16 +458,17 @@ fn render_dashboard(services: &[Service]) -> String {
                 let status = if is_process_alive(s.pid) { "running" } else { "stopped" };
                 let status_class = if is_process_alive(s.pid) { "status-running" } else { "status-stopped" };
                 format!(
-                    r#"<tr>
+                    r#"<tr id="row-{}">
                         <td><span class="status-dot {}"></span>{}</td>
                         <td class="url">{}</td>
                         <td>{}</td>
                         <td class="actions">
                             <button class="btn btn-copy" onclick="copyToClipboard('{}')">Copy</button>
                             <a href="{}" class="btn btn-go" target="_blank">Open</a>
+                            <button class="btn btn-kill" onclick="killService('{}')">Kill</button>
                         </td>
                     </tr>"#,
-                    status_class, status, url, s.port, url, url
+                    s.domain, status_class, status, url, s.port, url, url, s.domain
                 )
             })
             .collect::<Vec<_>>()
@@ -559,6 +588,13 @@ fn render_dashboard(services: &[Service]) -> String {
         .btn-go:hover {{
             background: #2563eb;
         }}
+        .btn-kill {{
+            background: #dc2626;
+            color: #fff;
+        }}
+        .btn-kill:hover {{
+            background: #b91c1c;
+        }}
         .empty {{
             text-align: center;
             color: #666;
@@ -615,10 +651,30 @@ fn render_dashboard(services: &[Service]) -> String {
     <script>
         function copyToClipboard(text) {{
             navigator.clipboard.writeText(text).then(() => {{
-                const toast = document.getElementById('toast');
-                toast.classList.add('show');
-                setTimeout(() => toast.classList.remove('show'), 2000);
+                showToast('Copied to clipboard');
             }});
+        }}
+        function killService(domain) {{
+            if (confirm('Kill ' + domain + '?')) {{
+                fetch('/api/kill/' + domain, {{ method: 'POST' }})
+                    .then(r => r.json())
+                    .then(data => {{
+                        if (data.ok) {{
+                            const row = document.getElementById('row-' + domain);
+                            if (row) row.remove();
+                            showToast('Killed ' + domain);
+                        }} else {{
+                            showToast('Failed to kill service');
+                        }}
+                    }})
+                    .catch(() => showToast('Failed to kill service'));
+            }}
+        }}
+        function showToast(msg) {{
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2000);
         }}
     </script>
 </body>
