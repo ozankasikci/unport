@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2021"
 description = "Local development port manager with automatic domain routing"
 license = "MIT"
+repository = "https://github.com/ozankasikci/unport"
+homepage = "https://github.com/ozankasikci/unport"
+readme = "README.md"
+keywords = ["development", "localhost", "proxy", "port", "cli"]
+categories = ["development-tools", "command-line-utilities"]
 
 [dependencies]
 # CLI
