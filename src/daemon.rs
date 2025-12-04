@@ -62,14 +62,27 @@ impl Registry {
         Ok(())
     }
 
-    /// Get next available port
+    /// Get next available port (checks if port is actually free)
     pub fn get_port(&mut self) -> u16 {
-        let port = self.next_port;
-        self.next_port += 1;
-        if self.next_port > PORT_RANGE_END {
-            self.next_port = PORT_RANGE_START;
+        let start = self.next_port;
+        loop {
+            let port = self.next_port;
+            self.next_port += 1;
+            if self.next_port > PORT_RANGE_END {
+                self.next_port = PORT_RANGE_START;
+            }
+
+            // Check if port is actually available by trying to bind
+            if is_port_available(port) {
+                return port;
+            }
+
+            // Prevent infinite loop if all ports are taken
+            if self.next_port == start {
+                // Fall back to returning the port anyway; it will fail at app startup
+                return port;
+            }
         }
-        port
     }
 
     /// Register a service
@@ -114,6 +127,14 @@ impl Registry {
 
 fn is_process_alive(pid: u32) -> bool {
     unsafe { libc::kill(pid as i32, 0) == 0 }
+}
+
+/// Check if a port is available by attempting to bind to it
+fn is_port_available(port: u16) -> bool {
+    // Check both IPv4 and IPv6 since apps may bind to either
+    std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
+        && std::net::TcpListener::bind(("::1", port)).is_ok()
+        && std::net::TcpListener::bind(("0.0.0.0", port)).is_ok()
 }
 
 type SharedRegistry = Arc<RwLock<Registry>>;
