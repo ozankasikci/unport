@@ -1,14 +1,5 @@
-mod client;
-mod config;
-mod daemon;
-mod detect;
-mod logger;
-mod process;
-mod proxy;
-mod tls;
-mod types;
-
 use clap::{Parser, Subcommand};
+use unport_cli::{client, daemon, logger, tls};
 
 #[derive(Parser)]
 #[command(name = "unport")]
