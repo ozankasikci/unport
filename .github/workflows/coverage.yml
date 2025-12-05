@@ -36,5 +36,20 @@ jobs:
         with:
           coverage: ${{ steps.coverage.outputs.percentage }}
           output: assets/coverage.svg
-          commit: true
-          commit-message: 'chore: update coverage badge'
+          commit: false
+
+      - name: Commit and push coverage badge
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add assets/coverage.svg
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git stash --include-untracked
+            git pull --rebase
+            git stash pop || true
+            git add assets/coverage.svg
+            git commit -m "chore: update coverage badge"
+            git push
+          fi
