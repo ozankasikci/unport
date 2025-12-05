@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixListener;
 use tokio::sync::RwLock;
@@ -208,6 +209,16 @@ pub async fn run(detach: bool) -> Result<()> {
     let proxy_handle = tokio::spawn(async move {
         if let Err(e) = proxy::run(proxy_registry).await {
             error!("Proxy server error: {}", e);
+        }
+    });
+
+    // Start periodic cleanup of dead processes
+    let cleanup_registry = registry.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            let mut reg = cleanup_registry.write().await;
+            reg.cleanup_dead();
         }
     });
 
