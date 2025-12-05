@@ -7,24 +7,28 @@ use hyper::{body::Incoming, Request, Response};
 use hyper_util::rt::TokioIo;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
-use tracing::{error, info, warn};
+use tokio_rustls::TlsAcceptor;
+use tracing::{error, warn};
+
+use crate::log_info;
 
 use crate::daemon::Registry;
 use crate::types::Service;
 
 pub type SharedRegistry = Arc<RwLock<Registry>>;
+pub type SharedTlsAcceptor = Arc<RwLock<TlsAcceptor>>;
 
-/// Run the HTTP proxy server
-pub async fn run(registry: SharedRegistry) -> Result<()> {
+/// Run the HTTP proxy server on port 80
+pub async fn run_http(registry: SharedRegistry) -> Result<()> {
     let addr = SocketAddr::from(([127, 0, 0, 1], 80));
     let listener = TcpListener::bind(addr).await.context(
         "Failed to bind to port 80. Try running with sudo or check if another process is using it.",
     )?;
 
-    info!("Proxy listening on http://127.0.0.1:80");
+    log_info!("HTTP proxy listening on http://127.0.0.1:80");
 
     loop {
         let (stream, _) = listener.accept().await?;
@@ -32,10 +36,62 @@ pub async fn run(registry: SharedRegistry) -> Result<()> {
 
         tokio::spawn(async move {
             if let Err(e) = handle_connection(stream, registry).await {
-                error!("Connection error: {}", e);
+                error!("HTTP connection error: {}", e);
             }
         });
     }
+}
+
+/// Run the HTTPS proxy server on port 443
+pub async fn run_https(registry: SharedRegistry, acceptor: SharedTlsAcceptor) -> Result<()> {
+    let addr = SocketAddr::from(([127, 0, 0, 1], 443));
+    let listener = TcpListener::bind(addr).await.context(
+        "Failed to bind to port 443. Try running with sudo or check if another process is using it.",
+    )?;
+
+    log_info!("HTTPS proxy listening on https://127.0.0.1:443");
+
+    loop {
+        let (stream, _) = listener.accept().await?;
+        let acceptor = acceptor.clone();
+        let registry = registry.clone();
+
+        tokio::spawn(async move {
+            // Get the current acceptor (allows hot-reload)
+            let tls_acceptor = acceptor.read().await.clone();
+            match tls_acceptor.accept(stream).await {
+                Ok(tls_stream) => {
+                    if let Err(e) = handle_tls_connection(tls_stream, registry).await {
+                        error!("HTTPS connection error: {}", e);
+                    }
+                }
+                Err(e) => {
+                    error!("TLS handshake error: {}", e);
+                }
+            }
+        });
+    }
+}
+
+/// Handle a TLS connection
+async fn handle_tls_connection<S>(stream: S, registry: SharedRegistry) -> Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    // For TLS connections, we use hyper directly (no WebSocket peek needed for now)
+    let io = TokioIo::new(stream);
+    let service = service_fn(move |req| {
+        let registry = registry.clone();
+        async move { handle_http_request(req, registry).await }
+    });
+
+    if let Err(e) = http1::Builder::new().serve_connection(io, service).await {
+        if !e.to_string().contains("connection reset") {
+            error!("HTTPS proxy connection error: {}", e);
+        }
+    }
+
+    Ok(())
 }
 
 /// Handle a single connection - detect WebSocket upgrades vs regular HTTP
@@ -115,7 +171,7 @@ async fn handle_websocket_tunnel(mut client: TcpStream, backend_port: u16) -> Re
     // Tunnel all data bidirectionally (including the initial HTTP upgrade request)
     match copy_bidirectional(&mut client, &mut backend).await {
         Ok((client_to_backend, backend_to_client)) => {
-            info!(
+            log_info!(
                 "WebSocket tunnel closed: {} bytes up, {} bytes down",
                 client_to_backend, backend_to_client
             );
@@ -181,7 +237,7 @@ async fn handle_http_request(
                             unsafe {
                                 libc::kill(service.pid as i32, libc::SIGTERM);
                             }
-                            info!("Killed service: {}", target_domain);
+                            log_info!("Killed service: {}", target_domain);
                             return Ok(Response::builder()
                                 .status(200)
                                 .header("content-type", "application/json")
