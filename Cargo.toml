@@ -10,6 +10,10 @@ readme = "README.md"
 keywords = ["development", "localhost", "proxy", "port", "cli"]
 categories = ["development-tools", "command-line-utilities"]
 
+[lib]
+name = "unport_cli"
+path = "src/lib.rs"
+
 [[bin]]
 name = "unport"
 path = "src/main.rs"

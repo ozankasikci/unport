@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// A registered service in the daemon
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Service {
     pub domain: String,
     pub port: u16,
@@ -11,7 +11,7 @@ pub struct Service {
 }
 
 /// Messages sent from CLI to daemon via Unix socket
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub enum Request {
     /// Register a new service
     Register {
@@ -35,7 +35,7 @@ pub enum Request {
 }
 
 /// Messages sent from daemon to CLI
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub enum Response {
     /// Success with optional message
     Ok(Option<String>),

@@ -1,44 +1,8 @@
 use std::path::PathBuf;
-
-const PORT_RANGE_START: u16 = 4000;
-const PORT_RANGE_END: u16 = 5000;
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
-struct Service {
-    domain: String,
-    port: u16,
-    pid: u32,
-    directory: PathBuf,
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq)]
-enum Request {
-    Register {
-        domain: String,
-        port: u16,
-        pid: u32,
-        directory: PathBuf,
-    },
-    Unregister {
-        domain: String,
-    },
-    GetPort,
-    List,
-    Stop {
-        domain: String,
-    },
-    Shutdown,
-    HttpsStatus,
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq)]
-enum Response {
-    Ok(Option<String>),
-    Port(u16),
-    Services(Vec<Service>),
-    Error(String),
-    HttpsEnabled(bool),
-}
+use unport_cli::types::{
+    Request, Response, Service, PORT_RANGE_END, PORT_RANGE_START,
+    pid_path, registry_path, socket_path, unport_dir,
+};
 
 mod service_tests {
     use super::*;
@@ -359,25 +323,7 @@ mod port_range_tests {
 }
 
 mod path_tests {
-    use std::path::PathBuf;
-
-    fn unport_dir() -> PathBuf {
-        dirs::home_dir()
-            .expect("Could not find home directory")
-            .join(".unport")
-    }
-
-    fn socket_path() -> PathBuf {
-        unport_dir().join("unport.sock")
-    }
-
-    fn pid_path() -> PathBuf {
-        unport_dir().join("unport.pid")
-    }
-
-    fn registry_path() -> PathBuf {
-        unport_dir().join("registry.json")
-    }
+    use super::*;
 
     #[test]
     fn test_unport_dir() {
