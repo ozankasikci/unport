@@ -30,6 +30,8 @@ pub enum Request {
     Stop { domain: String },
     /// Shutdown the daemon
     Shutdown,
+    /// Check if HTTPS is enabled
+    HttpsStatus,
 }
 
 /// Messages sent from daemon to CLI
@@ -43,6 +45,8 @@ pub enum Response {
     Services(Vec<Service>),
     /// Error message
     Error(String),
+    /// HTTPS status (enabled/disabled)
+    HttpsEnabled(bool),
 }
 
 /// Port assignment range

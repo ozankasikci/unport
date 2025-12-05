@@ -2,7 +2,9 @@ use anyhow::{Context, Result};
 use std::env;
 use std::os::unix::net::UnixStream;
 use std::io::{BufRead, BufReader, Write};
-use tracing::{info, warn};
+use tracing::warn;
+
+use crate::log_info;
 
 use crate::config::Config;
 use crate::detect::{detect, PortStrategy};
@@ -23,6 +25,11 @@ fn send_request(request: &Request) -> Result<Response> {
     let mut line = String::new();
     reader.read_line(&mut line)?;
 
+    // Handle empty response (e.g., daemon closed connection after shutdown)
+    if line.is_empty() {
+        return Ok(Response::Ok(None));
+    }
+
     let response: Response = serde_json::from_str(&line)?;
     Ok(response)
 }
@@ -37,7 +44,7 @@ pub async fn start() -> Result<()> {
 
     // Detect framework
     let detection = detect(&cwd)?;
-    info!("Detected framework: {}", detection.framework);
+    log_info!("Detected framework: {}", detection.framework);
 
     // Get start command (from config or detection)
     let start_command = config.start.as_deref().unwrap_or(&detection.start_command);
@@ -49,7 +56,7 @@ pub async fn start() -> Result<()> {
         _ => anyhow::bail!("Unexpected response from daemon"),
     };
 
-    info!("Assigned port: {}", port);
+    log_info!("Assigned port: {}", port);
 
     // Determine port strategy
     let port_strategy = if config.port_arg.is_some() {
@@ -60,10 +67,25 @@ pub async fn start() -> Result<()> {
         detection.port_strategy
     };
 
+    // Check if HTTPS is enabled
+    let https_enabled = match send_request(&Request::HttpsStatus) {
+        Ok(Response::HttpsEnabled(enabled)) => enabled,
+        _ => false,
+    };
+
+    if https_enabled {
+        log_info!("HTTPS enabled, certificate updated for https://{}", domain);
+    }
+
     // Spawn the app
     println!("Starting {}...", config.domain);
     println!("Running: {} (port {})", start_command, port);
-    println!("Available at: http://{}", domain);
+    if https_enabled {
+        println!("Available at: http://{}", domain);
+        println!("              https://{}", domain);
+    } else {
+        println!("Available at: http://{}", domain);
+    }
     println!();
 
     let mut child = spawn_app(
@@ -273,4 +295,34 @@ fn is_process_alive(pid: u32) -> bool {
     // EPERM means process exists but we can't signal it (e.g., root-owned process)
     let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
     errno == libc::EPERM
+}
+
+/// Add or remove the CA certificate from the system trust store
+pub async fn trust_ca(remove: bool) -> Result<()> {
+    crate::tls::trust_ca(remove)
+}
+
+/// Regenerate TLS certificate with SANs for all registered domains
+pub async fn regen_cert() -> Result<()> {
+    use crate::types::Response;
+
+    // Get list of registered services from daemon
+    let domains: Vec<String> = match send_request(&crate::types::Request::List) {
+        Ok(Response::Services(services)) => {
+            services.into_iter().map(|s| s.domain).collect()
+        }
+        Ok(_) => vec![],
+        Err(_) => {
+            println!("Note: Daemon not running, generating cert for localhost only.");
+            vec![]
+        }
+    };
+
+    // Generate new certificate with all domains
+    crate::tls::generate_cert(&domains)?;
+
+    println!("\n⚠️  Restart the daemon to use the new certificate:");
+    println!("   sudo unport daemon stop && sudo unport daemon start -d --https");
+
+    Ok(())
 }
