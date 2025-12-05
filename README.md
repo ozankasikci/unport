@@ -3,6 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/unport-cli.svg)](https://crates.io/crates/unport-cli)
 [![Downloads](https://img.shields.io/crates/d/unport-cli.svg)](https://crates.io/crates/unport-cli)
 [![License](https://img.shields.io/crates/l/unport-cli.svg)](LICENSE)
+![Coverage](assets/coverage.svg)
 
 Local development port manager. Access your apps via clean domains like `http://api.localhost` instead of `localhost:3847`.
 
