@@ -564,3 +564,141 @@ fn render_dashboard(services: &[Service]) -> String {
         service_rows
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_extract_host_from_headers_simple() {
+        let headers = "GET / HTTP/1.1\r\nHost: api.localhost\r\n";
+        let host = extract_host_from_headers(headers);
+        assert_eq!(host, Some("api.localhost".to_string()));
+    }
+
+    #[test]
+    fn test_extract_host_from_headers_with_port() {
+        let headers = "GET / HTTP/1.1\r\nHost: api.localhost:80\r\n";
+        let host = extract_host_from_headers(headers);
+        assert_eq!(host, Some("api.localhost:80".to_string()));
+    }
+
+    #[test]
+    fn test_extract_host_from_headers_lowercase() {
+        let headers = "GET / HTTP/1.1\r\nhost: web.localhost\r\n";
+        let host = extract_host_from_headers(headers);
+        assert_eq!(host, Some("web.localhost".to_string()));
+    }
+
+    #[test]
+    fn test_extract_host_from_headers_not_found() {
+        let headers = "GET / HTTP/1.1\r\nConnection: keep-alive\r\n";
+        let host = extract_host_from_headers(headers);
+        assert!(host.is_none());
+    }
+
+    #[test]
+    fn test_extract_host_with_whitespace() {
+        let headers = "GET / HTTP/1.1\r\nHost:   spaces.localhost   \r\n";
+        let host = extract_host_from_headers(headers);
+        assert_eq!(host, Some("spaces.localhost".to_string()));
+    }
+
+    #[test]
+    fn test_is_process_alive_current() {
+        let pid = std::process::id();
+        assert!(is_process_alive(pid));
+    }
+
+    #[test]
+    fn test_is_process_alive_dead() {
+        assert!(!is_process_alive(4000000));
+    }
+
+    #[test]
+    fn test_render_dashboard_empty_services() {
+        let services: Vec<Service> = vec![];
+        let html = render_dashboard(&services);
+        assert!(html.contains("<!DOCTYPE html>"));
+        assert!(html.contains("No services running"));
+        assert!(html.contains("unport start"));
+    }
+
+    #[test]
+    fn test_render_dashboard_with_services() {
+        let services = vec![
+            Service {
+                domain: "api.localhost".to_string(),
+                port: 4000,
+                pid: std::process::id(), // Use current PID so it's "alive"
+                directory: PathBuf::from("/app/api"),
+            },
+        ];
+        let html = render_dashboard(&services);
+        assert!(html.contains("<!DOCTYPE html>"));
+        assert!(html.contains("http://api.localhost"));
+        assert!(html.contains("4000"));
+    }
+
+    #[test]
+    fn test_render_dashboard_contains_required_elements() {
+        let services: Vec<Service> = vec![];
+        let html = render_dashboard(&services);
+        assert!(html.contains("<title>"));
+        assert!(html.contains("unport"));
+        assert!(html.contains("<table>"));
+        assert!(html.contains("<thead>"));
+        assert!(html.contains("<tbody>"));
+    }
+
+    #[test]
+    fn test_render_dashboard_with_dead_process() {
+        let services = vec![Service {
+            domain: "dead.localhost".to_string(),
+            port: 4000,
+            pid: 4000000, // Non-existent PID
+            directory: PathBuf::from("/app/dead"),
+        }];
+        let html = render_dashboard(&services);
+        assert!(html.contains("stopped"));
+        assert!(html.contains("status-stopped"));
+    }
+
+    #[test]
+    fn test_render_dashboard_has_actions() {
+        let services = vec![Service {
+            domain: "test.localhost".to_string(),
+            port: 4001,
+            pid: std::process::id(),
+            directory: PathBuf::from("/app/test"),
+        }];
+        let html = render_dashboard(&services);
+        assert!(html.contains("Copy"));
+        assert!(html.contains("Open"));
+        assert!(html.contains("Kill"));
+    }
+
+    #[test]
+    fn test_render_dashboard_multiple_services() {
+        let services = vec![
+            Service {
+                domain: "api.localhost".to_string(),
+                port: 4000,
+                pid: std::process::id(),
+                directory: PathBuf::from("/app/api"),
+            },
+            Service {
+                domain: "web.localhost".to_string(),
+                port: 4001,
+                pid: std::process::id(),
+                directory: PathBuf::from("/app/web"),
+            },
+        ];
+        let html = render_dashboard(&services);
+        assert!(html.contains("http://api.localhost"));
+        assert!(html.contains("http://web.localhost"));
+        assert!(html.contains("4000"));
+        assert!(html.contains("4001"));
+    }
+}

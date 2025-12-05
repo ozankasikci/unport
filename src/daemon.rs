@@ -427,3 +427,144 @@ async fn regenerate_tls_cert(
     log_info!("TLS certificate regenerated with {} domains", domains.len());
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::TcpListener;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_registry_new() {
+        let registry = Registry::new();
+        assert!(registry.list().is_empty());
+    }
+
+    #[test]
+    fn test_registry_register_and_get() {
+        let mut registry = Registry::new();
+        let service = Service {
+            domain: "test.localhost".to_string(),
+            port: 4000,
+            pid: 12345,
+            directory: PathBuf::from("/test"),
+        };
+        registry.register(service);
+
+        let found = registry.get("test.localhost");
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().port, 4000);
+    }
+
+    #[test]
+    fn test_registry_unregister() {
+        let mut registry = Registry::new();
+        let service = Service {
+            domain: "test.localhost".to_string(),
+            port: 4000,
+            pid: 12345,
+            directory: PathBuf::from("/test"),
+        };
+        registry.register(service);
+
+        let removed = registry.unregister("test.localhost");
+        assert!(removed.is_some());
+        assert!(registry.get("test.localhost").is_none());
+    }
+
+    #[test]
+    fn test_registry_list() {
+        let mut registry = Registry::new();
+        registry.register(Service {
+            domain: "a.localhost".to_string(),
+            port: 4000,
+            pid: 1000,
+            directory: PathBuf::from("/a"),
+        });
+        registry.register(Service {
+            domain: "b.localhost".to_string(),
+            port: 4001,
+            pid: 1001,
+            directory: PathBuf::from("/b"),
+        });
+
+        let list = registry.list();
+        assert_eq!(list.len(), 2);
+    }
+
+    #[test]
+    fn test_registry_get_port_increments() {
+        let mut registry = Registry::new();
+        let port1 = registry.get_port();
+        let port2 = registry.get_port();
+        assert_ne!(port1, port2);
+        assert!(port1 >= PORT_RANGE_START);
+        assert!(port2 >= PORT_RANGE_START);
+    }
+
+    #[test]
+    fn test_registry_cleanup_dead_removes_dead() {
+        let mut registry = Registry::new();
+        registry.register(Service {
+            domain: "dead.localhost".to_string(),
+            port: 4000,
+            pid: 4000000, // Non-existent PID
+            directory: PathBuf::from("/dead"),
+        });
+
+        registry.cleanup_dead();
+        assert!(registry.list().is_empty());
+    }
+
+    #[test]
+    fn test_registry_cleanup_dead_keeps_alive() {
+        let mut registry = Registry::new();
+        registry.register(Service {
+            domain: "alive.localhost".to_string(),
+            port: 4000,
+            pid: std::process::id(),
+            directory: PathBuf::from("/alive"),
+        });
+
+        registry.cleanup_dead();
+        assert_eq!(registry.list().len(), 1);
+    }
+
+    #[test]
+    fn test_is_process_alive_current() {
+        assert!(is_process_alive(std::process::id()));
+    }
+
+    #[test]
+    fn test_is_process_alive_dead() {
+        assert!(!is_process_alive(4000000));
+    }
+
+    #[test]
+    fn test_is_process_alive_parent() {
+        // Parent process should always exist
+        // On Unix, we can use getppid()
+        let ppid = unsafe { libc::getppid() } as u32;
+        assert!(is_process_alive(ppid));
+    }
+
+    #[test]
+    fn test_is_port_available_high_port() {
+        // Very high port should be available
+        // Note: This might fail if something is using the port
+        let high_port = 59999;
+        let available = is_port_available(high_port);
+        // We can't guarantee availability, so just test the function runs
+        let _ = available;
+    }
+
+    #[test]
+    fn test_is_port_available_when_bound() {
+        // Bind a port and verify it's not available
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        // Port should not be available (we're holding it)
+        assert!(!is_port_available(port));
+    }
+}

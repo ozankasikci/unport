@@ -413,10 +413,64 @@ fn remove_ca_from_trust_store(_ca_path: &std::path::Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use rcgen::{BasicConstraints, CertificateParams, DnType, IsCa, KeyPair, KeyUsagePurpose, SanType};
     use std::fs;
     use tempfile::tempdir;
     use x509_parser::prelude::*;
+
+    // Tests for path functions
+    #[test]
+    fn test_ca_key_path() {
+        let path = ca_key_path();
+        assert!(path.to_string_lossy().contains(".unport"));
+        assert!(path.to_string_lossy().ends_with("ca.key"));
+    }
+
+    #[test]
+    fn test_ca_cert_path() {
+        let path = ca_cert_path();
+        assert!(path.to_string_lossy().contains(".unport"));
+        assert!(path.to_string_lossy().ends_with("ca.crt"));
+    }
+
+    #[test]
+    fn test_certs_dir() {
+        let path = certs_dir();
+        assert!(path.to_string_lossy().contains(".unport"));
+        assert!(path.to_string_lossy().ends_with("certs"));
+    }
+
+    #[test]
+    fn test_localhost_key_path() {
+        let path = localhost_key_path();
+        assert!(path.to_string_lossy().contains("certs"));
+        assert!(path.to_string_lossy().ends_with("localhost.key"));
+    }
+
+    #[test]
+    fn test_localhost_cert_path() {
+        let path = localhost_cert_path();
+        assert!(path.to_string_lossy().contains("certs"));
+        assert!(path.to_string_lossy().ends_with("localhost.crt"));
+    }
+
+    #[test]
+    fn test_path_consistency() {
+        // Multiple calls should return the same path
+        assert_eq!(ca_key_path(), ca_key_path());
+        assert_eq!(ca_cert_path(), ca_cert_path());
+        assert_eq!(certs_dir(), certs_dir());
+        assert_eq!(localhost_key_path(), localhost_key_path());
+        assert_eq!(localhost_cert_path(), localhost_cert_path());
+    }
+
+    #[test]
+    fn test_localhost_paths_under_certs_dir() {
+        let certs = certs_dir();
+        assert!(localhost_key_path().starts_with(&certs));
+        assert!(localhost_cert_path().starts_with(&certs));
+    }
 
     fn parse_pem(input: &str) -> Result<::pem::Pem, ::pem::PemError> {
         ::pem::parse(input)

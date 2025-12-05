@@ -326,3 +326,55 @@ pub async fn regen_cert() -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_duration_seconds() {
+        assert_eq!(format_duration(std::time::Duration::from_secs(0)), "0s");
+        assert_eq!(format_duration(std::time::Duration::from_secs(30)), "30s");
+        assert_eq!(format_duration(std::time::Duration::from_secs(59)), "59s");
+    }
+
+    #[test]
+    fn test_format_duration_minutes() {
+        assert_eq!(format_duration(std::time::Duration::from_secs(60)), "1m 0s");
+        assert_eq!(format_duration(std::time::Duration::from_secs(90)), "1m 30s");
+        assert_eq!(format_duration(std::time::Duration::from_secs(3599)), "59m 59s");
+    }
+
+    #[test]
+    fn test_format_duration_hours() {
+        assert_eq!(format_duration(std::time::Duration::from_secs(3600)), "1h 0m");
+        assert_eq!(format_duration(std::time::Duration::from_secs(7200)), "2h 0m");
+        assert_eq!(format_duration(std::time::Duration::from_secs(3660)), "1h 1m");
+        assert_eq!(format_duration(std::time::Duration::from_secs(86399)), "23h 59m");
+    }
+
+    #[test]
+    fn test_format_duration_days() {
+        assert_eq!(format_duration(std::time::Duration::from_secs(86400)), "1d 0h");
+        assert_eq!(format_duration(std::time::Duration::from_secs(172800)), "2d 0h");
+        assert_eq!(format_duration(std::time::Duration::from_secs(90000)), "1d 1h");
+    }
+
+    #[test]
+    fn test_is_process_alive_current() {
+        let pid = std::process::id();
+        assert!(is_process_alive(pid));
+    }
+
+    #[test]
+    fn test_is_process_alive_dead() {
+        // Very high PID that doesn't exist
+        assert!(!is_process_alive(4000000));
+    }
+
+    #[test]
+    fn test_is_process_alive_init() {
+        // PID 1 should always exist (init/systemd)
+        assert!(is_process_alive(1));
+    }
+}
